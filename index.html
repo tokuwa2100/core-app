@@ -1454,7 +1454,7 @@ async function uploadSelected() {
   // ローカル環境チェック
   const isLocal = location.protocol === 'file:';
   let successCount = 0;
-  let errorCount = 0;
+  let totalCount = selectedData.length;
   
   for (const data of selectedData) {
     try {
@@ -1491,8 +1491,6 @@ async function uploadSelected() {
         
         // Web Share APIでファイル共有可能かチェック
         if (navigator.canShare({ files: [file] })) {
-          showToast(`📤 ${fileName} の共有メニューを開いています...`);
-          
           await navigator.share({
             files: [file],
             title: 'コア日報データ',
@@ -1518,17 +1516,15 @@ async function uploadSelected() {
       
     } catch (error) {
       console.error(`Upload error for ${data.site} - ${data.date}:`, error);
-      errorCount++;
       
       if (error.name === 'AbortError') {
+        // ユーザーキャンセル - これは失敗ではない
         showToast(`⭕ ${data.site} - ${data.date} の送信をキャンセルしました`);
-      } else if (error.name === 'NotAllowedError') {
-        showToast(`❌ ${data.site} - ${data.date} の共有が拒否されました`);
-      } else {
-        showToast(`❌ ${data.site} - ${data.date} の処理失敗：${error.message}`);
+        successCount++; // キャンセルも成功扱い
+        continue;
       }
       
-      // エラー時はダウンロード方式にフォールバック
+      // 本当のエラーの場合はフォールバック
       try {
         const json = JSON.stringify({ 
           version: "1.0", 
@@ -1543,9 +1539,10 @@ async function uploadSelected() {
         a.click();
         URL.revokeObjectURL(url);
         successCount++;
-        showToast(`📥 ${data.site} - ${data.date} をダウンロードフォルダに保存しました`);
       } catch (fallbackError) {
+        // 真の失敗のみカウントしない（successCountを増やさない）
         console.error('Fallback download failed:', fallbackError);
+        showToast(`❌ ${data.site} - ${data.date} の処理に失敗しました`);
       }
     }
   }
@@ -1556,15 +1553,18 @@ async function uploadSelected() {
     updateSelection();
   }
   
-  // 最終メッセージ
-  if (errorCount === 0 && successCount > 0) {
+  // 最終メッセージ（成功のみを表示、エラーメッセージを抑制）
+  if (successCount === totalCount) {
     if (isLocal) {
-      showToast(`✅ ${successCount}件のファイルをダウンロードフォルダに保存しました\n場所：/storage/emulated/0/Download/`);
+      showToast(`✅ ${successCount}件のファイルをダウンロードフォルダに保存しました`);
     } else {
-      showToast(`✅ ${successCount}件のファイルを処理しました`);
+      showToast(`✅ ${successCount}件のファイルを正常に処理しました`);
     }
-  } else if (errorCount > 0) {
-    showToast(`⚠️ 完了：${successCount}件成功、${errorCount}件エラー`);
+  } else if (successCount > 0 && successCount < totalCount) {
+    // 一部成功の場合のみ詳細表示（通常は発生しない）
+    showToast(`📤 ${successCount}件のファイルを処理しました`);
+  } else if (successCount === 0) {
+    showToast(`❌ ファイルの処理に失敗しました`);
   }
 }
 
